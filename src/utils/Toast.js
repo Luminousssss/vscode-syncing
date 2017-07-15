@@ -2,6 +2,7 @@
  * vscode message utils.
  */
 
+const moment = require("moment");
 const vscode = require("vscode");
 
 /**
@@ -60,7 +61,7 @@ function showGitHubTokenInputBox(p_forUpload = true)
     {
         const placeHolder = p_forUpload ?
             "Enter GitHub Personal Access Token." :
-            "Enter GitHub Personal Access Token (Leave blank to download from a public Gist).";
+            "Enter GitHub Personal Access Token (Leave it blank to download from a public Gist).";
         const options = {
             placeHolder: placeHolder,
             password: false,
@@ -69,7 +70,24 @@ function showGitHubTokenInputBox(p_forUpload = true)
         };
         vscode.window.showInputBox(options).then((value) =>
         {
-            p_resolve({ token: value ? value.trim() : "" });
+            if (value === undefined)
+            {
+                // reject if cancelled.
+                p_reject(new Error("you abort the synchronization."));
+            }
+            else
+            {
+                const token = value.trim();
+                if (p_forUpload && !token)
+                {
+                    // only reject when uploading.
+                    p_reject(new Error("the GitHub Personal Access Token is not set."));
+                }
+                else
+                {
+                    p_resolve({ token });
+                }
+            }
         });
     });
 }
@@ -84,18 +102,96 @@ function showGistInputBox(p_forUpload = true)
     return new Promise((p_resolve, p_reject) =>
     {
         const placeHolder = p_forUpload ?
-            "Enter Your Gist ID (Leave it blank to create a new Gist automatically)." :
-            "Enter Your Gist ID.";
+            "Enter Gist ID (Leave it blank to create a new Gist automatically)." :
+            "Enter Gist ID.";
         const options = {
             placeHolder: placeHolder,
             password: false,
-            prompt: "Used for synchronizing your settings to Gist.",
+            prompt: "Used for synchronizing your settings with Gist.",
             ignoreFocusOut: true
         };
         vscode.window.showInputBox(options).then((value) =>
         {
-            p_resolve({ id: value ? value.trim() : "" });
+            if (value === undefined)
+            {
+                // reject if cancelled.
+                p_reject(new Error("you abort the synchronization."));
+            }
+            else
+            {
+                const id = value.trim();
+                if (!p_forUpload && !id)
+                {
+                    // only reject when downloading.
+                    p_reject(new Error("the Gist ID is not set."));
+                }
+                else
+                {
+                    p_resolve({ id });
+                }
+            }
         });
+    });
+}
+
+/**
+ * show remote Gist list box.
+ * @param {Object} p_api
+ * @param {Boolean} [p_forUpload=true] default is true, show uploading message, else show downloading message.
+ * @returns {Promise}
+ */
+function showRemoteGistListBox(p_api, p_forUpload = true)
+{
+    return new Promise((p_resolve, p_reject) =>
+    {
+        this.status("Syncing: checking remote Gists...");
+        return p_api.getAll()
+            .then((gists) =>
+            {
+                const items = gists.map((gist) => ({
+                    label: `Gist ID: ${gist.id}`,
+                    description: `Last uploaded ${moment.duration(new Date(gist.updated_at) - new Date()).humanize(true)}.`,
+                    data: gist.id
+                }));
+                items.unshift({
+                    label: `Enter Gist ID manually...`,
+                    data: "@@manual"
+                });
+                return vscode.window.showQuickPick(items, {
+                    ignoreFocusOut: true,
+                    matchOnDescription: true,
+                    placeHolder: `Choose a Gist to ${p_forUpload ? "upload" : "download"} your settings.`
+                });
+            })
+            .then((item) =>
+            {
+                // reject if cancelled.
+                if (item)
+                {
+                    const id = item.data;
+                    if (!p_forUpload && !id)
+                    {
+                        // only reject when downloading.
+                        p_reject(new Error("the Gist ID is not set."));
+                    }
+                    else
+                    {
+                        if (id === "@@manual")
+                        {
+                            p_resolve({ id: "" });
+                        }
+                        else
+                        {
+                            p_resolve({ id });
+                        }
+                    }
+                }
+                else
+                {
+                    p_reject(new Error("you abort the synchronization."));
+                }
+            })
+            .catch(p_reject);
     });
 }
 
@@ -121,6 +217,7 @@ module.exports = {
     statusError,
     statusFatal,
     showGistInputBox,
+    showRemoteGistListBox,
     showGitHubTokenInputBox,
     showReloadBox
 };

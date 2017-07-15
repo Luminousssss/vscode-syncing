@@ -6,6 +6,7 @@ const fs = require("fs");
 const path = require("path");
 const async = require("async");
 
+const Gist = require("./Gist");
 const Toast = require("./Toast");
 const Extension = require("./Extension");
 const Environment = require("./Environment");
@@ -417,7 +418,7 @@ class Config
     }
 
     /**
-     * clear GitHub token and save to file.
+     * clear GitHub Personal Access Token and save to file.
      * @returns {Promise}
      */
     clearSyncingToken()
@@ -428,13 +429,24 @@ class Config
     }
 
     /**
+     * clear Gist ID and save to file.
+     * @returns {Promise}
+     */
+    clearSyncingID()
+    {
+        const settings = this.loadSyncingSettings();
+        settings.id = "";
+        return this.saveSyncingSettings(settings, false);
+    }
+
+    /**
      * prepare Syncing's settings for upload.
      * @returns {Promise}
      */
     prepareUploadSettings()
     {
         // GitHub token must exist, but Gist ID could be none.
-        return this.prepareSyncingSettings(true);
+        return this.prepareSyncingSettings();
     }
 
     /**
@@ -454,61 +466,55 @@ class Config
      */
     prepareSyncingSettings(p_forUpload = true)
     {
+        // GitHub token could be none, but Gist ID must exist.
         return new Promise((p_resolve, p_reject) =>
         {
-            const tasks = [];
             const settings = this.loadSyncingSettings();
-            if (!settings.token)
-            {
-                tasks.push(Toast.showGitHubTokenInputBox.bind(this, p_forUpload));
-            }
-            if (!settings.id)
-            {
-                tasks.push(Toast.showGistInputBox.bind(this, p_forUpload));
-            }
-
-            if (tasks.length === 0)
+            if (settings.token && settings.id)
             {
                 p_resolve(settings);
             }
             else
             {
-                async.eachSeries(
-                    tasks,
-                    (task, done) =>
+                let gistIDTask;
+                if (settings.token)
+                {
+                    if (settings.id)
                     {
-                        task().then((value) =>
-                        {
-                            Object.assign(settings, value);
-                            done();
-                        });
-                    },
-                    (err) =>
+                        gistIDTask = Promise.resolve(settings.id);
+                    }
+                    else
                     {
-                        const isTokenError = p_forUpload && settings.token === "";
-                        const isIDError = !p_forUpload && settings.id === "";
-                        if (err || isTokenError || isIDError)
+                        gistIDTask = this._requestGistID(settings.token, p_forUpload);
+                    }
+                }
+                else
+                {
+                    gistIDTask = Toast.showGitHubTokenInputBox(p_forUpload).then(({ token }) =>
+                    {
+                        settings.token = token;
+                        if (settings.id)
                         {
-                            const error = new Error();
-                            if (isTokenError)
-                            {
-                                error.message = "the GitHub Personal Access Token is not set.";
-                            }
-                            else if (isIDError)
-                            {
-                                error.message = "the Gist ID is not set.";
-                            }
-                            p_reject(error);
+                            return settings;
                         }
                         else
                         {
-                            this.saveSyncingSettings(settings).then(() =>
-                            {
-                                p_resolve(settings);
-                            });
+                            return this._requestGistID(token, p_forUpload);
                         }
-                    }
-                );
+                    });
+                }
+
+                gistIDTask.then(({ id }) =>
+                {
+                    settings.id = id;
+                    this.saveSyncingSettings(settings).then(() =>
+                    {
+                        p_resolve(settings);
+                    });
+                }).catch((err) =>
+                {
+                    p_reject(err);
+                });
             }
         });
     }
@@ -563,6 +569,37 @@ class Config
                 p_resolve();
             }
         });
+    }
+
+    /**
+     * ask user for Gist ID.
+     *
+     * @param {String} p_token GitHub Personal Access Token.
+     * @param {Boolean} [p_forUpload=true] default is true, GitHub token must exist, but Gist ID could be none, else, GitHub token could be none, but Gist ID must exist.
+     * @returns {Promise}
+     */
+    _requestGistID(p_token, p_forUpload = true)
+    {
+        if (p_token)
+        {
+            const api = Gist.create(p_token, this._env.getSyncingProxy());
+            return Toast.showRemoteGistListBox(api, p_forUpload).then((value) =>
+            {
+                if (value.id)
+                {
+                    return value;
+                }
+                else
+                {
+                    // show gist input box when id is still null.
+                    return Toast.showGistInputBox(p_forUpload);
+                }
+            });
+        }
+        else
+        {
+            return Toast.showGistInputBox(p_forUpload);
+        }
     }
 }
 
