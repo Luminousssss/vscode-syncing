@@ -5,6 +5,8 @@
 const GitHubAPI = require("github");
 const GIST_DESCRIPTION = "VSCode's Settings - Syncing";
 
+const Toast = require("./Toast");
+
 class Gist
 {
     constructor(p_token, p_proxy)
@@ -71,33 +73,52 @@ class Gist
     /**
      * get gist of the authenticated user.
      * @param {String} p_id gist id.
+     * @param {Boolean} [p_showIndicator=false] default is false, don't show progress indicator.
      * @returns {Promise}
      */
-    get(p_id)
+    get(p_id, p_showIndicator = false)
     {
         return new Promise((p_resolve, p_reject) =>
         {
-            this._api.gists.get({ id: p_id }).then((gist) =>
+            function resolveWrap(p_value)
             {
-                p_resolve(gist);
-            }).catch((err) =>
+                if (p_showIndicator)
+                {
+                    Toast.clearSpinner("");
+                }
+                p_resolve(p_value);
+            }
+
+            function rejectWrap(p_error)
             {
+                if (p_showIndicator)
+                {
+                    Toast.statusError(`Syncing: Downloading failed. ${p_error.message}`);
+                }
+                p_reject(p_error);
+            }
+
+            if (p_showIndicator)
+            {
+                Toast.showSpinner("Syncing: Checking remote settings.");
+            }
+
+            this._api.gists.get({ id: p_id }).then(resolveWrap).catch((err) =>
+            {
+                let error = new Error("Please check your Internet connection.");
+                error.code = err.code;
+
                 if (err.code === 401)
                 {
-                    const error = new Error("Please check your GitHub Personal Access Token.");
+                    error = new Error("Please check your GitHub Personal Access Token.");
                     error.code = err.code;
-                    p_reject(error);
                 }
                 else if (err.code === 404)
                 {
-                    const error = new Error("Please check your Gist ID.");
+                    error = new Error("Please check your Gist ID.");
                     error.code = err.code;
-                    p_reject(error);
                 }
-                else
-                {
-                    p_reject(new Error("Please check your Internet connection."));
-                }
+                rejectWrap(error);
             });
         });
     }
@@ -252,19 +273,44 @@ class Gist
 
     /**
      * find and update gist.
-     * @param {String} p_id gist id.
-     * @param {Object} p_uploads settings that will be uploaded.
-     * @param {Boolean} [p_upsert=true] default is true, create new if gist not exists.
+     * @param  {Object} [{ id, uploads, upsert = true, showIndicator = false }={}]
+     *     id: gist id.
+     *     uploads: settings that will be uploaded.
+     *     upsert: default is true, create new if gist not exists.
+     *     showIndicator: default is false, don't show progress indicator.
      * @returns {Promise}
      */
-    findAndUpdate(p_id, p_uploads, p_upsert = true)
+    findAndUpdate({ id, uploads, upsert = true, showIndicator = false } = {})
     {
         return new Promise((p_resolve, p_reject) =>
         {
-            this.exists(p_id).then((exists) =>
+            function resolveWrap(p_value)
             {
-                const gist = { id: p_id, files: {} };
-                for (const item of p_uploads)
+                if (showIndicator)
+                {
+                    Toast.clearSpinner("");
+                }
+                p_resolve(p_value);
+            }
+
+            function rejectWrap(p_error)
+            {
+                if (showIndicator)
+                {
+                    Toast.statusError(`Syncing: Uploading failed. ${p_error.message}`);
+                }
+                p_reject(p_error);
+            }
+
+            if (showIndicator)
+            {
+                Toast.showSpinner("Syncing: Uploading settings.");
+            }
+
+            this.exists(id).then((exists) =>
+            {
+                const gist = { id: id, files: {} };
+                for (const item of uploads)
                 {
                     // any `null` content will be filtered out, just in case.
                     if (item.content)
@@ -279,23 +325,23 @@ class Gist
                     gist.files = this._getModifiedFiles(gist.files, exists.files);
                     if (gist.files)
                     {
-                        p_resolve(this.update(gist));
+                        this.update(gist).then(resolveWrap).catch(rejectWrap);
                     }
                     else
                     {
-                        p_resolve(exists);
+                        resolveWrap(exists);
                     }
                 }
                 else
                 {
-                    if (p_upsert)
+                    if (upsert)
                     {
                         // TODO: pass gist public.
-                        p_resolve(this.createSettings(gist.files));
+                        this.createSettings(gist.files).then(resolveWrap).catch(rejectWrap);
                     }
                     else
                     {
-                        p_reject(new Error(`No such ID in Gist: ${p_id}`));
+                        rejectWrap(new Error(`No such ID in Gist: ${id}`));
                     }
                 }
             });

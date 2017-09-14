@@ -6,12 +6,14 @@ const moment = require("moment");
 const vscode = require("vscode");
 
 /**
- * toast message in vscode status bar. auto-hide the message when `p_time` is set.
+ * toast message in vscode status bar. auto-clear the message when `p_time` is set.
  * @param {String} p_message message to show.
- * @param {number} [p_time=2000] hide after time.
+ * @param {Number} p_time clear after time.
  */
 function status(p_message, p_time)
 {
+    clearSpinner();
+
     if (p_time)
     {
         vscode.window.setStatusBarMessage("");
@@ -73,7 +75,7 @@ function showGitHubTokenInputBox(p_forUpload = true)
             if (value === undefined)
             {
                 // reject if cancelled.
-                p_reject(new Error("you abort the synchronization."));
+                p_reject(new Error("You abort the synchronization."));
             }
             else
             {
@@ -81,7 +83,7 @@ function showGitHubTokenInputBox(p_forUpload = true)
                 if (p_forUpload && !token)
                 {
                     // only reject when uploading.
-                    p_reject(new Error("the GitHub Personal Access Token is not set."));
+                    p_reject(new Error("The GitHub Personal Access Token is not set."));
                 }
                 else
                 {
@@ -115,7 +117,7 @@ function showGistInputBox(p_forUpload = true)
             if (value === undefined)
             {
                 // reject if cancelled.
-                p_reject(new Error("you abort the synchronization."));
+                p_reject(new Error("You abort the synchronization."));
             }
             else
             {
@@ -123,7 +125,7 @@ function showGistInputBox(p_forUpload = true)
                 if (!p_forUpload && !id)
                 {
                     // only reject when downloading.
-                    p_reject(new Error("the Gist ID is not set."));
+                    p_reject(new Error("The Gist ID is not set."));
                 }
                 else
                 {
@@ -144,24 +146,36 @@ function showRemoteGistListBox(p_api, p_forUpload = true)
 {
     return new Promise((p_resolve, p_reject) =>
     {
-        this.status("Syncing: checking remote Gists...");
+        this.showSpinner("Syncing: Checking remote Gists.");
         return p_api.getAll()
             .then((gists) =>
             {
-                const items = gists.map((gist) => ({
-                    label: `Gist ID: ${gist.id}`,
-                    description: `Last uploaded ${moment.duration(new Date(gist.updated_at) - new Date()).humanize(true)}.`,
-                    data: gist.id
-                }));
-                items.unshift({
+                this.clearSpinner("");
+
+                const manualItem = {
                     label: `Enter Gist ID manually...`,
                     data: "@@manual"
-                });
-                return vscode.window.showQuickPick(items, {
-                    ignoreFocusOut: true,
-                    matchOnDescription: true,
-                    placeHolder: `Choose a Gist to ${p_forUpload ? "upload" : "download"} your settings.`
-                });
+                };
+
+                // don't show quick pick dialog when gists is empty.
+                if (gists && gists.length > 0)
+                {
+                    const items = gists.map((gist) => ({
+                        label: `Gist ID: ${gist.id}`,
+                        description: `Last uploaded ${moment.duration(new Date(gist.updated_at) - new Date()).humanize(true)}.`,
+                        data: gist.id
+                    }));
+                    items.unshift(manualItem);
+                    return vscode.window.showQuickPick(items, {
+                        ignoreFocusOut: true,
+                        matchOnDescription: true,
+                        placeHolder: `Choose a Gist to ${p_forUpload ? "upload" : "download"} your settings.`
+                    });
+                }
+                else
+                {
+                    return manualItem;
+                }
             })
             .then((item) =>
             {
@@ -188,7 +202,7 @@ function showRemoteGistListBox(p_api, p_forUpload = true)
                 }
                 else
                 {
-                    p_reject(new Error("you abort the synchronization."));
+                    p_reject(new Error("You abort the synchronization."));
                 }
             })
             .catch(p_reject);
@@ -201,7 +215,7 @@ function showRemoteGistListBox(p_api, p_forUpload = true)
 function showReloadBox()
 {
     const title = "Reload";
-    const message = "Syncing: Extensions are successfully synced. Reload VSCode to take effect.";
+    const message = "Syncing: Settings are successfully synced. Reload VSCode to take effect.";
     vscode.window.showInformationMessage(message, { title: title }).then((btn) =>
     {
         if (btn && btn.title === title)
@@ -209,6 +223,66 @@ function showReloadBox()
             vscode.commands.executeCommand("workbench.action.reloadWindow");
         }
     });
+}
+
+let spinnerTimer = null;
+const spinner = {
+    interval: 100,
+    frames: ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
+};
+
+/**
+ * show a message with spinner and progress.
+ * @param {String} p_message message to display after spinner.
+ * @param {Number} p_progress current progress.
+ * @param {Number} p_total total progress.
+ */
+function showSpinner(p_message, p_progress, p_total)
+{
+    clearSpinner();
+
+    let text = "";
+    if (p_progress !== undefined && p_progress !== null && p_total !== undefined && p_total !== null)
+    {
+        text = `[${p_progress}/${p_total}]`;
+    }
+
+    if (p_message !== undefined && p_message !== null && p_message !== "")
+    {
+        text = text ? `${text} ${p_message}` : `${p_message}`;
+    }
+
+    if (text)
+    {
+        text = ` ${text}`;
+    }
+
+    let step = 0;
+    const frames = spinner.frames;
+    const length = frames.length;
+    spinnerTimer = setInterval(() =>
+    {
+        vscode.window.setStatusBarMessage(`${frames[step]}${text}`);
+        step = (step + 1) % length;
+    }, spinner.interval);
+}
+
+/**
+ * clear spinner and show message, do nothing if currently no spinner is exist, .
+ * @param {String} p_message message to show.
+ */
+function clearSpinner(p_message)
+{
+    if (spinnerTimer)
+    {
+        clearInterval(spinnerTimer);
+        spinnerTimer = null;
+
+        if (p_message !== undefined && p_message !== null)
+        {
+            vscode.window.setStatusBarMessage(p_message);
+        }
+    }
 }
 
 module.exports = {
@@ -219,5 +293,7 @@ module.exports = {
     showGistInputBox,
     showRemoteGistListBox,
     showGitHubTokenInputBox,
-    showReloadBox
+    showReloadBox,
+    showSpinner,
+    clearSpinner
 };

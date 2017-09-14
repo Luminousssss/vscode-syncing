@@ -54,35 +54,27 @@ function _registerCommand(p_context, p_command, p_callback)
  */
 function _uploadSettings()
 {
-    Toast.status("Syncing: gathering local settings...");
-    _config.prepareUploadSettings().then((settings) =>
+    _config.prepareUploadSettings(true).then((settings) =>
     {
         const api = Gist.create(settings.token, _env.getSyncingProxy());
-        _config.getConfigs({ load: true }).then((configs) =>
+        return _config.getConfigs({ load: true, showIndicator: true }).then((configs) =>
         {
-            Toast.status("Syncing: uploading settings...");
-            return api.findAndUpdate(settings.id, configs).then((gist) =>
+            return api.findAndUpdate({ id: settings.id, uploads: configs, showIndicator: true }).then((gist) =>
             {
                 if (gist.id === settings.id)
                 {
-                    Toast.statusInfo("Syncing: settings uploaded.");
+                    Toast.statusInfo("Syncing: Settings uploaded.");
                 }
                 else
                 {
                     _config.saveSyncingSettings(Object.assign({}, settings, { id: gist.id })).then(() =>
                     {
-                        Toast.statusInfo("Syncing: settings uploaded.");
+                        Toast.statusInfo("Syncing: Settings uploaded.");
                     });
                 }
             });
-        }).catch((err) =>
-        {
-            Toast.statusError(`Syncing: upload failed. ${err.message}`);
         });
-    }).catch((err) =>
-    {
-        Toast.statusError(`Syncing: canceled. ${err.message}`);
-    });
+    }).catch(_noop);
 }
 
 /**
@@ -90,17 +82,15 @@ function _uploadSettings()
  */
 function _downloadSettings()
 {
-    Toast.status("Syncing: checking remote settings...");
-    _config.prepareDownloadSettings().then((settings) =>
+    _config.prepareDownloadSettings(true).then((settings) =>
     {
         const api = Gist.create(settings.token, _env.getSyncingProxy());
-        api.get(settings.id).then((gist) =>
+        return api.get(settings.id, true).then((gist) =>
         {
-            Toast.status("Syncing: downloading settings...");
-            return _config.saveConfigs(gist.files).then((synced) =>
+            return _config.saveConfigs(gist.files, true).then((synced) =>
             {
                 // TODO: log synced files.
-                Toast.statusInfo("Syncing: settings downloaded.");
+                Toast.statusInfo("Syncing: Settings downloaded.");
                 if (_isExtensionsSynced(synced))
                 {
                     Toast.showReloadBox();
@@ -110,27 +100,14 @@ function _downloadSettings()
         {
             if (err.code === 401)
             {
-                _config.clearSyncingToken().then(() =>
-                {
-                    Toast.statusError(`Syncing: download failed. ${err.message}`);
-                });
+                _config.clearSyncingToken();
             }
             else if (err.code === 404)
             {
-                _config.clearSyncingID().then(() =>
-                {
-                    Toast.statusError(`Syncing: download failed. ${err.message}`);
-                });
-            }
-            else
-            {
-                Toast.statusError(`Syncing: download failed. ${err.message}`);
+                _config.clearSyncingID();
             }
         });
-    }).catch((err) =>
-    {
-        Toast.statusError(`Syncing: canceled. ${err.message}`);
-    });
+    }).catch(_noop);
 }
 
 /**
@@ -179,5 +156,10 @@ function _openFile(p_filepath)
 {
     vscode.commands.executeCommand("vscode.open", vscode.Uri.file(p_filepath));
 }
+
+/**
+ * do nothing.
+ */
+function _noop() { }
 
 module.exports.activate = activate;

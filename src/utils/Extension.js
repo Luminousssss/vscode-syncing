@@ -54,21 +54,37 @@ class Extension
     /**
      * sync extensions (add/update/remove).
      * @param {Array} p_extensions extensions list.
+     * @param {Boolean} [p_showIndicator=false] default is false, don't show progress indicator.
      */
-    sync(p_extensions)
+    sync(p_extensions, p_showIndicator = false)
     {
         return new Promise((p_resolve) =>
         {
             this._getDifferentExtensions(p_extensions).then((diff) =>
             {
                 // add/update/remove extensions.
+                const { added, updated, removed, total } = diff;
                 const result = { extension: {} };
                 const tasks = [
-                    this._addExtensions.bind(this, diff.added),
-                    this._updateExtensions.bind(this, diff.updated),
-                    this._removeExtensions.bind(this, diff.removed)
+                    this._addExtensions.bind(this, {
+                        extensions: added,
+                        progress: 0,
+                        total,
+                        showIndicator: p_showIndicator
+                    }),
+                    this._updateExtensions.bind(this, {
+                        extensions: updated,
+                        progress: added.length,
+                        total,
+                        showIndicator: p_showIndicator
+                    }),
+                    this._removeExtensions.bind(this, {
+                        extensions: removed,
+                        progress: added.length + updated.length,
+                        total,
+                        showIndicator: p_showIndicator
+                    })
                 ];
-
                 async.eachSeries(
                     tasks,
                     (task, done) =>
@@ -81,6 +97,10 @@ class Extension
                     },
                     () =>
                     {
+                        if (p_showIndicator)
+                        {
+                            Toast.clearSpinner("");
+                        }
                         p_resolve(result);
                     }
                 );
@@ -90,23 +110,37 @@ class Extension
 
     /**
      * add extensions.
-     * @param {Array} p_extensions
+     * @param {Object} [{ extensions, progress, total, showIndicator = false }={}]
+     *     extensions: extensions to add.
+     *     progress: progress of the synchronization of all extensions.
+     *     total: total progress of the synchronization of all extensions.
+     *     [showIndicator=false]: default is false, don't show progress indicator.
      * @returns {Promise}
      */
-    _addExtensions(p_extensions)
+    _addExtensions({ extensions, progress, total, showIndicator = false } = {})
     {
         return new Promise((p_resolve) =>
         {
-            Toast.status("Syncing: installing new extensions...");
-
+            let steps = progress;
             const result = { added: [], addedErrors: [] };
             async.eachSeries(
-                p_extensions,
+                extensions,
                 (item, done) =>
                 {
+                    steps++;
+
+                    if (showIndicator)
+                    {
+                        Toast.showSpinner(`Syncing: Downloading extension: ${item.id}`, steps, total);
+                    }
+
                     this.downloadExtension(item)
                         .then((extension) =>
                         {
+                            if (showIndicator)
+                            {
+                                Toast.showSpinner(`Syncing: Installing extension: ${item.id}`, steps, total);
+                            }
                             return this.extractExtension(extension);
                         })
                         .then((extension) =>
@@ -134,27 +168,45 @@ class Extension
 
     /**
      * update extensions.
-     * @param {Array} p_extensions
+     * @param {Object} [{ extensions, progress, total, showIndicator = false }={}]
+     *     extensions: extensions to update.
+     *     progress: progress of the synchronization of all extensions.
+     *     total: total progress of the synchronization of all extensions.
+     *     [showIndicator=false]: default is false, don't show progress indicator.
      * @returns {Promise}
      */
-    _updateExtensions(p_extensions)
+    _updateExtensions({ extensions, progress, total, showIndicator = false } = {})
     {
         return new Promise((p_resolve) =>
         {
-            Toast.status("Syncing: updating extensions...");
-
+            let steps = progress;
             const result = { updated: [], updatedErrors: [] };
             async.eachSeries(
-                p_extensions,
+                extensions,
                 (item, done) =>
                 {
+                    steps++;
+
+                    if (showIndicator)
+                    {
+                        Toast.showSpinner(`Syncing: Downloading extension: ${item.id}`, steps, total);
+                    }
+
                     this.downloadExtension(item)
                         .then((extension) =>
                         {
-                            return this.uninstallExtension(extension, false);
+                            if (showIndicator)
+                            {
+                                Toast.showSpinner(`Syncing: Removing outdated extension: ${item.id}`, steps, total);
+                            }
+                            return this.uninstallExtension(extension);
                         })
                         .then((extension) =>
                         {
+                            if (showIndicator)
+                            {
+                                Toast.showSpinner(`Syncing: Installing extension: ${item.id}`, steps, total);
+                            }
                             return this.extractExtension(extension);
                         })
                         .then((extension) =>
@@ -182,20 +234,30 @@ class Extension
 
     /**
      * remove extensions.
-     * @param {Array} p_extensions
+     * @param {Object} [{ extensions, progress, total, showIndicator = false }={}]
+     *     extensions: extensions to remove.
+     *     progress: progress of the synchronization of all extensions.
+     *     total: total progress of the synchronization of all extensions.
+     *     [showIndicator=false]: default is false, don't show progress indicator.
      * @returns {Promise}
      */
-    _removeExtensions(p_extensions)
+    _removeExtensions({ extensions, progress, total, showIndicator = false } = {})
     {
         return new Promise((p_resolve) =>
         {
-            Toast.status("Syncing: removing unused extensions...");
-
+            let steps = progress;
             const result = { removed: [], removedErrors: [] };
             async.eachSeries(
-                p_extensions,
+                extensions,
                 (item, done) =>
                 {
+                    steps++;
+
+                    if (showIndicator)
+                    {
+                        Toast.showSpinner(`Syncing: Uninstalling extension: ${item.id}`, steps, total);
+                    }
+
                     this.uninstallExtension(item).then(() =>
                     {
                         result.removed.push(item);
@@ -223,8 +285,6 @@ class Extension
     {
         return new Promise((p_resolve, p_reject) =>
         {
-            Toast.status(`Syncing: downloading extension: ${p_extension.id}`);
-
             const filepath = temp.path({ suffix: `.${p_extension.id}.zip` });
             const file = fs.createWriteStream(filepath);
             file.on("finish", () =>
@@ -265,37 +325,41 @@ class Extension
     {
         return new Promise((p_resolve, p_reject) =>
         {
-            Toast.status(`Syncing: installing extension: ${p_extension.id}`);
-
-            try
+            temp.mkdir("syncing-", (err1, dirPath) =>
             {
-                temp.mkdir("syncing-", (err, res) =>
+                if (err1)
                 {
-                    if (err)
+                    p_reject(`Cannot extract extension: ${p_extension.id}. Access temp folder denied.`);
+                }
+                else
+                {
+                    const zip = new AdmZip(p_extension.zip);
+                    zip.extractAllToAsync(dirPath, true, (err2) =>
                     {
-                        throw err;
-                    }
-                    else
-                    {
-                        const zip = new AdmZip(p_extension.zip);
-                        zip.extractAllTo(res, true);
-                        const extPath = path.join(this._env.extensionsPath, `${p_extension.publisher}.${p_extension.name}-${p_extension.version}`);
-                        fse.copySync(
-                            path.join(res, "extension"),
-                            extPath
-                        );
-
-                        // clear temp file (async).
-                        fse.remove(p_extension.zip);
-
-                        p_resolve(Object.assign({}, p_extension, { path: extPath }));
-                    }
-                });
-            }
-            catch (err)
-            {
-                p_reject(`Cannot extract extension: ${p_extension.id}.`);
-            }
+                        if (err2)
+                        {
+                            p_reject(`Cannot extract extension: ${p_extension.id}. ${err2.message}`);
+                        }
+                        else
+                        {
+                            const extPath = path.join(this._env.extensionsPath, `${p_extension.publisher}.${p_extension.name}-${p_extension.version}`);
+                            fse.copy(path.join(dirPath, "extension"), extPath, (err3) =>
+                            {
+                                if (err3)
+                                {
+                                    p_reject(`Cannot extract extension: ${p_extension.id}. ${err3.message}`);
+                                }
+                                else
+                                {
+                                    // clear temp file (asynchronization and don't wait).
+                                    fse.remove(p_extension.zip);
+                                    p_resolve(Object.assign({}, p_extension, { path: extPath }));
+                                }
+                            });
+                        }
+                    });
+                }
+            });
         });
     }
 
@@ -333,18 +397,12 @@ class Extension
     /**
      * uninstall vscode extension.
      * @param {Object} p_extension
-     * @param {Boolean} [p_showToast=true] default is true, show toast.
      * returns {Promise}
      */
-    uninstallExtension(p_extension, p_showToast = true)
+    uninstallExtension(p_extension)
     {
         return new Promise((p_resolve, p_reject) =>
         {
-            if (p_showToast)
-            {
-                Toast.status(`Syncing: removing extension: ${p_extension.id}`);
-            }
-
             const localExtension = vscode.extensions.getExtension(p_extension.id);
             const version = localExtension ? localExtension.packageJSON.version : p_extension.version;
             fse.remove(path.join(this._env.extensionsPath, `${p_extension.publisher}.${p_extension.name}-${version}`), (err) =>
@@ -370,7 +428,7 @@ class Extension
     {
         return new Promise((p_resolve) =>
         {
-            const extensions = { added: [], updated: [], removed: [] };
+            const extensions = { added: [], updated: [], removed: [], total: 0 };
             if (p_extensions)
             {
                 let localExtension;
@@ -391,12 +449,14 @@ class Extension
                         {
                             // updated.
                             extensions.updated.push(ext);
+                            extensions.total = extensions.total + 1;
                         }
                     }
                     else
                     {
                         // added.
                         extensions.added.push(ext);
+                        extensions.total = extensions.total + 1;
                     }
                 }
 
@@ -407,6 +467,7 @@ class Extension
                     {
                         // removed.
                         extensions.removed.push(ext);
+                        extensions.total = extensions.total + 1;
                     }
                 }
             }

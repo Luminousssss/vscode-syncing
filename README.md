@@ -4,7 +4,7 @@
 [![Installs](https://vsmarketplacebadge.apphb.com/installs-short/nonoroazoro.syncing.svg)](https://marketplace.visualstudio.com/items?itemName=nonoroazoro.syncing)
 [![Ratings](https://vsmarketplacebadge.apphb.com/rating/nonoroazoro.syncing.svg)](https://marketplace.visualstudio.com/items?itemName=nonoroazoro.syncing)
 
-*Syncing* is designed to **sync all of your VSCode settings** with GitHub Gist. <a href="#getting-started">Getting started!</a>
+*Syncing* is designed to **sync all of your VSCode settings** with GitHub Gist. <a href="#getting-started">Getting started!</a> or <a href="#example">check out the example</a>.
 
 > *Keep it simple & reliable*.
 
@@ -52,7 +52,7 @@ The keybindings **are disabled by default**, you can enable them by updating `VS
 
 1. for VSCode versions >= 1.11 (***recommended***):
 
-    <img src="https://github.com/nonoroazoro/vscode-syncing/raw/master/docs/gif/Keyboard-Shortcuts.gif" width="988" />
+    ![keyboard shortcuts](docs/gif/Keyboard-Shortcuts.gif)
 
 
 1. for VSCode versions < 1.11, for example:
@@ -84,48 +84,56 @@ You can add a proxy to accelerate the synchronization, find and set the `"http.p
 
 ## Getting Started
 
-1. Get your own `GitHub Personal Access Token`:
+1. Get your own `GitHub Personal Access Token`
 
     1. **Login to your `Settings` page.**
 
-        ![login to settings page](docs/png/0.png)
+        ![login to settings page](docs/png/Settings.png)
 
     1. **Select `Personal access tokens` tab and click `Generate new token`.**
 
-        ![generate new token](docs/png/1.png)
+        ![generate new token](docs/png/Generate-New-Token.png)
 
     1. **Select `gist` and click `Generate token`.**
 
-        ![allow gist](docs/png/2.png)
+        ![allow gist](docs/png/Allow-Gist.png)
 
     1. **Copy and backup your token.**
 
-        ![copy and backup token](docs/png/3.png)
+        ![copy and backup token](docs/png/Copy-Token.png)
 
-1. Sync your settings:
+1. Sync your settings
 
     *`Syncing`* will ask for necessary information `for the first time` and `save for later use`.
 
-    1. **Upload**:
+    1. **Upload**
 
         1. Type `upload` in `VSCode Command Palette`.
 
+            ![upload settings](docs/png/Upload-Settings.png)
+
         1. Enter your `GitHub Personal Access Token`.
 
-        1. Enter your `Gist ID` (or `leave it blank` to create automatically).
+        1. Select or enter your `Gist ID` (or `leave it blank` to create automatically).
 
         1. Done!
 
         1. After uploading, you can find your settings and the corresponding `Gist ID` in your [GitHub Gist](https://gist.github.com).
 
-            ![settings and gist](docs/png/4.png)
+            ![gist](docs/png/Gist.png)
 
-    1. **Download**:
+    1. **Download**
 
         1. Type `download` in `VSCode Command Palette`.
 
+            ![download settings](docs/png/Download-Settings.png)
+
         1. Enter your `GitHub Personal Access Token` (or `leave it blank` if you want to download from a public Gist)
 
-        1. Enter your `Gist ID` (or a `public Gist ID`).
+        1. Select or enter your `Gist ID` (or a `public Gist ID`).
 
         1. Done!
+
+## **Example**
+
+![upload example](docs/gif/Example-Upload.gif)
